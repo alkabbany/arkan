@@ -9,23 +9,50 @@ async function callClaude(prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
     }),
   })
+
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error?.message || 'API error')
-  return data.content[0].text
+
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.error || JSON.stringify(data)
+    throw new Error(`API error ${res.status}: ${msg}`)
+  }
+
+  // Claude returns content as array of blocks
+  const block = data?.content?.find(b => b.type === 'text')
+  if (!block?.text) throw new Error('Empty response from API')
+  return block.text
 }
 
 function parseJson(raw) {
-  let text = raw.trim().replace(/```[\w]*|```/g, '').trim()
+  // Strip markdown fences
+  let text = raw.trim().replace(/```[\w]*\n?|```/g, '').trim()
+
+  // Extract first JSON object
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1) return null
+  if (start === -1 || end === -1) {
+    console.error('No JSON object found in:', text.slice(0, 200))
+    return null
+  }
+
   text = text.slice(start, end + 1)
-  text = text.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
-  try { return JSON.parse(text) } catch { return null }
+
+  // Fix common JSON issues
+  text = text
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ') // strip control chars
+
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    console.error('JSON parse failed:', e.message, '\nText:', text.slice(0, 300))
+    return null
+  }
 }
 
 // ── Individual AI report ──────────────────────────────────────────────────────
@@ -34,47 +61,42 @@ export async function generateIndividualAIReport(playerInfo, factorPercentiles) 
     `${FACTOR_LABELS_AR[f]}: الرتبة المئوية ${factorPercentiles[f] ?? '-'}%`
   ).join('\n')
 
-  const prompt = `أنت محلل أداء رياضي محترف.
+  const prompt = `أنت محلل أداء رياضي محترف. أرجع JSON فقط بدون أي نص إضافي قبله أو بعده.
 
-⚠️ تعليمات مهمة:
-- اكتب باللغة العربية فقط
-- أرجع JSON فقط بدون أي نص إضافي
-- استخدم وصفاً لغوياً فقط مثل: (مرتفع، متوسط، منخفض، ضعيف، قوي)
-- لا تذكر أرقاماً داخل النص
-- اكتب بأسلوب احترافي تحليلي
-- اجعل الفقرات تحتوي على شرح كافٍ ومترابط
-- اربط بين العوامل المختلفة
-
-الشكل المطلوب (JSON فقط):
+الشكل المطلوب:
 {
-  "summary": "ملخص واضح من فقرة متوسطة الطول",
-  "detailed_analysis": "تحليل تفصيلي من فقرتين إلى ثلاث فقرات مترابطة",
+  "summary": "ملخص عام للأداء في فقرة واحدة بالعربية",
+  "detailed_analysis": "تحليل تفصيلي مترابط في فقرتين بالعربية",
   "weak_points": [
-    { "factor": "اسم العامل", "analysis": "تحليل مفصل يشرح سبب الضعف وتأثيره" }
+    { "factor": "اسم العامل", "analysis": "تحليل نقطة الضعف" }
   ],
   "recommendations": [
-    { "title": "عنوان واضح", "details": "شرح عملي لكيفية التحسين" }
+    { "title": "عنوان التوصية", "details": "تفاصيل التوصية" }
   ]
 }
 
 بيانات اللاعب:
-الاسم: ${playerInfo.name}
-العمر: ${playerInfo.age}
-المركز: ${playerInfo.position}
+- الاسم: ${playerInfo.name}
+- العمر: ${playerInfo.age}
+- المركز: ${playerInfo.position}
 
-النتائج (الرتبة المئوية مقارنة بالمجموعة المرجعية):
+النتائج (الرتبة المئوية):
 ${factorLines}
 
-أرجع JSON صالح فقط بدون أي نص إضافي.`
+قواعد: اكتب بالعربية فقط. لا تذكر أرقاماً. أرجع JSON صالح فقط.`
 
   try {
     const raw = await callClaude(prompt)
     const parsed = parseJson(raw)
-    if (!parsed) throw new Error('Invalid JSON')
-    parsed.weak_points = parsed.weak_points || []
-    parsed.recommendations = parsed.recommendations || []
-    return parsed
+    if (!parsed) throw new Error('Could not parse response')
+    return {
+      summary: parsed.summary || '',
+      detailed_analysis: parsed.detailed_analysis || '',
+      weak_points: parsed.weak_points || [],
+      recommendations: parsed.recommendations || [],
+    }
   } catch (e) {
+    console.error('Individual AI report error:', e)
     return {
       summary: `تعذر توليد التقرير: ${e.message}`,
       detailed_analysis: '',
@@ -87,40 +109,38 @@ ${factorLines}
 // ── Group AI report ───────────────────────────────────────────────────────────
 export async function generateGroupAIReport(teamAvg) {
   const factorLines = FACTOR_ORDER.map(f =>
-    `${FACTOR_LABELS_AR[f]}: الرتبة المئوية ${teamAvg[f] ?? '-'}%`
+    `${FACTOR_LABELS_AR[f]}: ${teamAvg[f] ?? '-'}%`
   ).join('\n')
 
-  const prompt = `أنت محلل أداء رياضي محترف.
+  const prompt = `أنت محلل أداء رياضي محترف. أرجع JSON فقط بدون أي نص إضافي.
 
-لديك متوسط أداء فريق رياضي (الرتبة المئوية لكل عامل):
-${factorLines}
-
-المطلوب:
-1. تحليل عام لأداء الفريق بأسلوب احترافي
-2. تحديد نقاط الضعف الجماعية
-3. توصيات تدريبية واضحة وقابلة للتطبيق
-
-اكتب بالعربية فقط. لا تستخدم أرقاماً في النص.
-
-أعد النتيجة بصيغة JSON فقط:
+الشكل المطلوب:
 {
-  "summary": "تحليل عام من فقرة إلى فقرتين",
+  "summary": "تحليل عام لأداء الفريق بالعربية",
   "weak_points": [
-    { "factor": "اسم العامل", "analysis": "تحليل سبب الضعف وأثره على الفريق" }
+    { "factor": "اسم العامل", "analysis": "تحليل نقطة الضعف" }
   ],
   "recommendations": [
-    { "title": "عنوان التوصية", "details": "تفاصيل التوصية العملية" }
+    { "title": "عنوان التوصية", "details": "تفاصيل التوصية" }
   ]
-}`
+}
+
+متوسطات الفريق (الرتبة المئوية):
+${factorLines}
+
+قواعد: اكتب بالعربية فقط. لا تذكر أرقاماً. أرجع JSON صالح فقط.`
 
   try {
     const raw = await callClaude(prompt)
     const parsed = parseJson(raw)
-    if (!parsed) throw new Error('Invalid JSON')
-    parsed.weak_points = parsed.weak_points || []
-    parsed.recommendations = parsed.recommendations || []
-    return parsed
+    if (!parsed) throw new Error('Could not parse response')
+    return {
+      summary: parsed.summary || '',
+      weak_points: parsed.weak_points || [],
+      recommendations: parsed.recommendations || [],
+    }
   } catch (e) {
+    console.error('Group AI report error:', e)
     return {
       summary: `تعذر توليد التقرير: ${e.message}`,
       weak_points: [],
