@@ -21,14 +21,16 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        model: body.model,
+        max_tokens: body.max_tokens || 4000,
+        system: 'You are a JSON-only API. You must respond with a single valid JSON object. Never use markdown formatting, never use backticks, never add any text outside the JSON object.',
+        messages: body.messages,
+      }),
     })
 
     const data = await response.json()
-
-    // Return the full Anthropic response as-is to the client
     return res.status(response.status).json(data)
-
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }
