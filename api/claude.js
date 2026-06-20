@@ -12,7 +12,6 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' })
 
   try {
-    // req.body is already parsed by Vercel when bodyParser: true
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -26,7 +25,10 @@ export default async function handler(req, res) {
     })
 
     const data = await response.json()
+
+    // Return the full Anthropic response as-is to the client
     return res.status(response.status).json(data)
+
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }
