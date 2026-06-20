@@ -161,7 +161,6 @@ export function FactorBar({ factors }) {
     name: FACTOR_LABELS_AR[f],
     value: factors[f] ?? 0,
   }))
-  const minVal = Math.min(...data.map(d => d.value))
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
@@ -183,9 +182,9 @@ export function FactorBar({ factors }) {
             <Cell
               key={i}
               fill={
-                entry.value === minVal ? '#EF4444'
-                : entry.value >= PERC_HIGH ? '#22C55E'
-                : '#FACC15'
+                entry.value >= PERC_HIGH ? '#22C55E'
+                : entry.value >= PERC_LOW  ? '#FACC15'
+                : '#EF4444'
               }
             />
           ))}

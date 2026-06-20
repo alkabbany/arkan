@@ -144,20 +144,20 @@ export default function GroupReportView({ onBack, norms, sessionsCsv }) {
                 {/* Top players */}
                 <div className="section-title" style={{ marginTop: 8 }}>أفضل اللاعبين</div>
                 {topPlayers.map((p, i) => (
-                  <div key={p.player_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: i === 0 ? 'var(--green)' : 'var(--text-secondary)' }}>
-                      {i + 1}. {p.name}
+                  <div key={p.player_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ color: COLOR_MAP[scoreColor(p.avg)], fontWeight: i === 0 ? 600 : 400 }}>
+                      {i === 0 ? '① ' : i === 1 ? '② ' : '③ '}{p.name}
                     </span>
-                    <span style={{ color: 'var(--text-muted)' }}>{p.avg}%</span>
+                    <span className={'badge badge-' + scoreColor(p.avg)} style={{ fontSize: 10 }}>{p.avg}%</span>
                   </div>
                 ))}
 
                 {/* Needs work */}
                 <div className="section-title" style={{ marginTop: 8 }}>يحتاج تطوير</div>
                 {weakPlayers.map((p, i) => (
-                  <div key={p.player_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--red)' }}>{p.name}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{p.avg}%</span>
+                  <div key={p.player_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ color: COLOR_MAP[scoreColor(p.avg)] }}>{p.name}</span>
+                    <span className={'badge badge-' + scoreColor(p.avg)} style={{ fontSize: 10 }}>{p.avg}%</span>
                   </div>
                 ))}
               </div>
