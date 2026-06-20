@@ -64,7 +64,10 @@ export default function GroupReportView({ onBack, norms, sessionsCsv }) {
     : null
 
   const topPlayers = teamData ? teamData.players.slice(0, 3) : []
-  const weakPlayers = teamData ? [...teamData.players].slice(-3).reverse() : []
+  // Only players genuinely needing development (below green threshold), worst first
+  const weakPlayers = teamData
+    ? [...teamData.players].filter(p => p.avg < 67).reverse().slice(0, 3)
+    : []
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
