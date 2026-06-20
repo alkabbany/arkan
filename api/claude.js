@@ -24,12 +24,22 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: body.model,
         max_tokens: body.max_tokens || 4000,
-        system: 'You are a JSON-only API. You must respond with a single valid JSON object. Never use markdown formatting, never use backticks, never add any text outside the JSON object.',
-        messages: body.messages,
+        system: 'You are a JSON API. Output only raw JSON. No markdown. No backticks. No explanation. Start your response with { and end with }.',
+        messages: [
+          ...body.messages,
+          // Pre-fill assistant turn to force response starts with {
+          { role: 'assistant', content: '{' }
+        ],
       }),
     })
 
     const data = await response.json()
+
+    // Prepend the { we used as prefill
+    if (data?.content?.[0]?.text) {
+      data.content[0].text = '{' + data.content[0].text
+    }
+
     return res.status(response.status).json(data)
   } catch (err) {
     return res.status(500).json({ error: err.message })
