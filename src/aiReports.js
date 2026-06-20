@@ -1,6 +1,7 @@
 import { ANTHROPIC_MODEL, FACTOR_LABELS_AR, FACTOR_ORDER } from './config.js'
 
-const API_URL = 'https://api.anthropic.com/v1/messages'
+// Calls our Vercel serverless proxy (/api/claude) to avoid CORS
+const API_URL = '/api/claude'
 
 async function callClaude(prompt) {
   const res = await fetch(API_URL, {
