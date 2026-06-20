@@ -8,48 +8,46 @@ async function callClaude(prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1500,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }],
     }),
   })
 
   const data = await res.json()
-  console.log('=== RAW API RESPONSE ===', JSON.stringify(data).slice(0, 500))
-
-  if (!res.ok) {
-    throw new Error(`API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
-  }
+  if (!res.ok) throw new Error(`API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
 
   const text = data?.content?.[0]?.text
-  if (!text) throw new Error(`No text in response. Keys: ${Object.keys(data).join(', ')}`)
-
-  console.log('=== RAW TEXT ===', text.slice(0, 300))
+  if (!text) throw new Error('No text in response')
   return text
 }
 
 function parseJson(raw) {
   let text = raw.trim()
 
-  // Remove markdown fences
-  text = text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim()
+  // Strip any markdown fences (```json ... ``` or ``` ... ```)
+  text = text.replace(/^```[\w]*\n?/gm, '').replace(/^```\n?/gm, '').trim()
 
-  // Find JSON boundaries
+  // Extract the JSON object
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
-
-  if (start === -1 || end === -1) {
-    console.error('No braces found. Raw:', text.slice(0, 200))
-    return null
-  }
+  if (start === -1 || end === -1) return null
 
   text = text.slice(start, end + 1)
 
   try {
     return JSON.parse(text)
-  } catch (e) {
-    console.error('Parse error:', e.message, 'Text:', text.slice(0, 300))
-    // Last resort: return a plain object with the raw text as summary
-    return { summary: raw.slice(0, 500), weak_points: [], recommendations: [] }
+  } catch {
+    // Truncated JSON — extract fields individually
+    const get = (key) => {
+      const m = text.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`, 's'))
+      return m ? m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : ''
+    }
+    return {
+      summary: get('summary'),
+      detailed_analysis: get('detailed_analysis'),
+      weak_points: [],
+      recommendations: [],
+    }
   }
 }
 
@@ -59,25 +57,24 @@ export async function generateIndividualAIReport(playerInfo, factorPercentiles) 
     `${FACTOR_LABELS_AR[f]}: ${factorPercentiles[f] ?? '-'}%`
   ).join('\n')
 
-  const prompt = `You are a sports performance analyst. Respond ONLY with a valid JSON object, no other text.
+  const prompt = `Analyze this athlete and return a JSON object.
 
-Format:
-{
-  "summary": "Arabic text: general performance summary",
-  "detailed_analysis": "Arabic text: detailed analysis in 2-3 paragraphs",
-  "weak_points": [{"factor": "factor name in Arabic", "analysis": "explanation in Arabic"}],
-  "recommendations": [{"title": "title in Arabic", "details": "details in Arabic"}]
-}
-
-Player data:
-Name: ${playerInfo.name}
-Age: ${playerInfo.age}
-Position: ${playerInfo.position}
+Player: ${playerInfo.name}, Age: ${playerInfo.age}, Position: ${playerInfo.position}
 
 Percentile scores vs reference group:
 ${factorLines}
 
-Rules: Write all values in Arabic. Return ONLY the JSON object.`
+Return this exact JSON structure with Arabic text values:
+{
+  "summary": "paragraph summarizing overall performance",
+  "detailed_analysis": "two paragraphs of detailed analysis",
+  "weak_points": [
+    {"factor": "factor name", "analysis": "why it is weak and its impact"}
+  ],
+  "recommendations": [
+    {"title": "recommendation title", "details": "practical training recommendation"}
+  ]
+}`
 
   try {
     const raw = await callClaude(prompt)
@@ -90,13 +87,7 @@ Rules: Write all values in Arabic. Return ONLY the JSON object.`
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
     }
   } catch (e) {
-    console.error('Individual report error:', e)
-    return {
-      summary: `خطأ: ${e.message}`,
-      detailed_analysis: '',
-      weak_points: [],
-      recommendations: [],
-    }
+    return { summary: `خطأ: ${e.message}`, detailed_analysis: '', weak_points: [], recommendations: [] }
   }
 }
 
@@ -106,19 +97,21 @@ export async function generateGroupAIReport(teamAvg) {
     `${FACTOR_LABELS_AR[f]}: ${teamAvg[f] ?? '-'}%`
   ).join('\n')
 
-  const prompt = `You are a sports performance analyst. Respond ONLY with a valid JSON object, no other text.
-
-Format:
-{
-  "summary": "Arabic text: team performance summary",
-  "weak_points": [{"factor": "factor name in Arabic", "analysis": "explanation in Arabic"}],
-  "recommendations": [{"title": "title in Arabic", "details": "details in Arabic"}]
-}
+  const prompt = `Analyze this team's performance and return a JSON object.
 
 Team average percentile scores:
 ${factorLines}
 
-Rules: Write all values in Arabic. Return ONLY the JSON object.`
+Return this exact JSON structure with Arabic text values:
+{
+  "summary": "paragraph summarizing team performance",
+  "weak_points": [
+    {"factor": "factor name", "analysis": "why it is weak and its impact on the team"}
+  ],
+  "recommendations": [
+    {"title": "recommendation title", "details": "practical team training recommendation"}
+  ]
+}`
 
   try {
     const raw = await callClaude(prompt)
@@ -130,11 +123,6 @@ Rules: Write all values in Arabic. Return ONLY the JSON object.`
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
     }
   } catch (e) {
-    console.error('Group report error:', e)
-    return {
-      summary: `خطأ: ${e.message}`,
-      weak_points: [],
-      recommendations: [],
-    }
+    return { summary: `خطأ: ${e.message}`, weak_points: [], recommendations: [] }
   }
 }
