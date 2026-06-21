@@ -10,18 +10,18 @@ function headers() {
   }
 }
 
-// ── Raw URL (no auth needed for public repos) ─────────────────────────────────
-function rawUrl(path) {
-  const { owner, repo, branch } = GITHUB_CONFIG
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`
-}
-
-// ── Fetch a file as text ──────────────────────────────────────────────────────
+// ── Fetch a file via GitHub Contents API (authenticated, no CORS issues) ──────
 export async function fetchFileText(path) {
-  const url = rawUrl(path)
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Failed to fetch ${path}: ${res.status}`)
-  return res.text()
+  const { owner, repo, branch } = GITHUB_CONFIG
+  const url = `${BASE}/repos/${owner}/${repo}/contents/${path}?ref=${branch}`
+  const res = await fetch(url, { headers: headers(), cache: 'no-store' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || `Failed to fetch ${path}: ${res.status}`)
+  }
+  const data = await res.json()
+  // GitHub returns file content as base64
+  return decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))))
 }
 
 // ── Get file SHA (needed for updates) ────────────────────────────────────────
